@@ -54,7 +54,7 @@ for /f "delims=" %%i in ('powershell -NoProfile -Command ^
     "$lbl2.Size = New-Object System.Drawing.Size(330, 20); " ^
     "$lbl2.Font = New-Object System.Drawing.Font('Segoe UI', 8); " ^
     "$form.Controls.Add($lbl2); " ^
-    "$buttons = @('Atualizar api.py', 'Reiniciar Tracker', 'Ver Status', 'Desinstalar', 'Fechar'); " ^
+    "$buttons = @('Atualizar Tracker', 'Reiniciar Tracker', 'Ver Status', 'Desinstalar', 'Fechar'); " ^
     "$y = 70; " ^
     "foreach ($btn_text in $buttons) { " ^
     "    $btn = New-Object System.Windows.Forms.Button; " ^
@@ -69,7 +69,7 @@ for /f "delims=" %%i in ('powershell -NoProfile -Command ^
     "Write-Output $form.Tag" ^
 ') do set CHOICE=%%i
 
-if "%CHOICE%"=="Atualizar api.py" goto ATUALIZAR
+if "%CHOICE%"=="Atualizar Tracker" goto ATUALIZAR
 if "%CHOICE%"=="Reiniciar Tracker" goto REINICIAR
 if "%CHOICE%"=="Ver Status" goto STATUS
 if "%CHOICE%"=="Desinstalar" goto DESINSTALAR
@@ -80,22 +80,33 @@ goto FIM
 :ATUALIZAR
 :: Encerrar tracker
 schtasks /end /tn "ArchiTracker" >nul 2>&1
+schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
 taskkill /f /im python.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
+taskkill /f /im wscript.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
 
-:: Baixar novo api.py
-powershell -NoProfile -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/api.py' -OutFile 'C:\tracker-arquitetura\api.py' -UseBasicParsing" >nul 2>&1
-set ERR_API=%errorlevel%
+:: Baixar todos os arquivos
+set BASE_URL=https://raw.githubusercontent.com/reremori/archi-tracker-releases/main
+set PASTA=C:\tracker-arquitetura
+set ERR=0
 
-:: Baixar novo version.txt
-powershell -NoProfile -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt' -OutFile 'C:\tracker-arquitetura\version.txt' -UseBasicParsing" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/api.py' -OutFile '%PASTA%\api.py' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
+if %errorlevel% neq 0 set ERR=1
 
-if %ERR_API% equ 0 (
-    if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/iniciar_invisivel.vbs' -OutFile '%PASTA%\iniciar_invisivel.vbs' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
+if %errorlevel% neq 0 set ERR=1
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/corrigir_architracker.bat' -OutFile '%PASTA%\corrigir_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/painel_architracker.bat' -OutFile '%PASTA%\painel_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/version.txt' -OutFile '%PASTA%\version.txt' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
+
+if %ERR% equ 0 (
+    if exist "%PASTA%\tracker.lock" del /f /q "%PASTA%\tracker.lock"
+    timeout /t 1 /nobreak >nul
     schtasks /run /tn "ArchiTracker" >nul 2>&1
     powershell -NoProfile -Command ^
         "Add-Type -AssemblyName System.Windows.Forms; " ^
-        "[System.Windows.Forms.MessageBox]::Show('api.py atualizado para versao %VER_REMOTE% e tracker reiniciado!', 'ArchiTracker', 'OK', 'Information')" >nul 2>&1
+        "[System.Windows.Forms.MessageBox]::Show('Tracker atualizado para versao %VER_REMOTE% e reiniciado!', 'ArchiTracker', 'OK', 'Information')" >nul 2>&1
 ) else (
     powershell -NoProfile -Command ^
         "Add-Type -AssemblyName System.Windows.Forms; " ^
@@ -106,8 +117,10 @@ goto MENU
 :: ================================================
 :REINICIAR
 schtasks /end /tn "ArchiTracker" >nul 2>&1
+schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
 taskkill /f /im python.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
+taskkill /f /im wscript.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
 if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock"
 schtasks /run /tn "ArchiTracker" >nul 2>&1
 powershell -NoProfile -Command ^
@@ -141,12 +154,21 @@ del "%TEMP%\archi_confirm.txt" >nul 2>&1
 if /i "%CONFIRM%"=="Yes" (
     schtasks /end /tn "ArchiTracker" >nul 2>&1
     schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
+    timeout /t 3 /nobreak >nul
     taskkill /f /im python.exe >nul 2>&1
+    taskkill /f /im pythonw.exe >nul 2>&1
     taskkill /f /im wscript.exe >nul 2>&1
+    timeout /t 3 /nobreak >nul
     schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
     schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
+    if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock" >nul 2>&1
     timeout /t 2 /nobreak >nul
     rd /s /q "C:\tracker-arquitetura" >nul 2>&1
+    timeout /t 2 /nobreak >nul
+    if exist "C:\tracker-arquitetura" rmdir /s /q "C:\tracker-arquitetura" >nul 2>&1
+    :: Remover atalho da area de trabalho
+    if exist "%PUBLIC%\Desktop\ArchiTracker.lnk" del /f /q "%PUBLIC%\Desktop\ArchiTracker.lnk" >nul 2>&1
+    if exist "%USERPROFILE%\Desktop\ArchiTracker.lnk" del /f /q "%USERPROFILE%\Desktop\ArchiTracker.lnk" >nul 2>&1
     powershell -NoProfile -Command ^
         "Add-Type -AssemblyName System.Windows.Forms; " ^
         "[System.Windows.Forms.MessageBox]::Show('ArchiTracker removido com sucesso!', 'ArchiTracker', 'OK', 'Information')" >nul 2>&1

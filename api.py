@@ -38,7 +38,6 @@ APP_PATTERNS = {
     "illustrator": ("Illustrator", "Design"),
     "photoshop": ("Photoshop", "Design"),
     "whatsapp": ("WhatsApp", "Comunicacao"),
-    "3DMax": ("3DMax", "Renderizacao"),
 }
 
 def get_title():
@@ -81,6 +80,7 @@ def get_tracking_status():
 def tracker_loop():
     last_title = None
     last_recorded_at = 0
+    idle_registered = False  # controla se a pausa ja foi gravada neste periodo de idle
     print(f"Tracker iniciado para: {USER_ID}")
     try:
         while True:
@@ -89,9 +89,27 @@ def tracker_loop():
                 if tracking:
                     idle = get_idle_seconds()
                     if idle >= IDLE_LIMIT:
+                        # Grava pausa uma unica vez ao entrar em idle
+                        if last_title is not None and not idle_registered:
+                            try:
+                                supabase.table("time_tracking").insert({
+                                    "recorded_at": datetime.now(timezone.utc).isoformat(),
+                                    "app": "Pausa",
+                                    "category": "Pausa",
+                                    "filename": "",
+                                    "raw_title": "",
+                                    "user_id": USER_ID,
+                                    "org_id": ORG_ID,
+                                }).execute()
+                                print("Pausa registrada")
+                            except Exception as e:
+                                print(f"Erro ao registrar pausa: {e}")
+                            idle_registered = True
                         last_title = None
                         last_recorded_at = 0
                     else:
+                        # Usuario voltou a usar o computador — reseta o flag de pausa
+                        idle_registered = False
                         title = get_title()
                         now = time.time()
                         new_window = title and title != last_title
@@ -123,6 +141,7 @@ def tracker_loop():
                 else:
                     last_title = None
                     last_recorded_at = 0
+                    idle_registered = False
             except Exception as e:
                 print(f"Erro geral: {e}")
             time.sleep(15)

@@ -163,9 +163,9 @@ if /i "%CONFIRM%"=="Yes" (
     schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
     if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock" >nul 2>&1
     timeout /t 2 /nobreak >nul
-    rd /s /q "C:\tracker-arquitetura" >nul 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Path 'C:\tracker-arquitetura' -Recurse -Force -ErrorAction SilentlyContinue"
     timeout /t 2 /nobreak >nul
-    if exist "C:\tracker-arquitetura" rmdir /s /q "C:\tracker-arquitetura" >nul 2>&1
+    if exist "C:\tracker-arquitetura" rd /s /q "C:\tracker-arquitetura" >nul 2>&1
     :: Remover atalho da area de trabalho
     if exist "%PUBLIC%\Desktop\ArchiTracker.lnk" del /f /q "%PUBLIC%\Desktop\ArchiTracker.lnk" >nul 2>&1
     if exist "%USERPROFILE%\Desktop\ArchiTracker.lnk" del /f /q "%USERPROFILE%\Desktop\ArchiTracker.lnk" >nul 2>&1

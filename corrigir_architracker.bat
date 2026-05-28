@@ -7,7 +7,7 @@ echo   ARCHITRACKER - Corrigir e Reconfigurar
 echo ================================================
 echo.
 
-net session >nul 2>&1
+fsutil dirty query %systemdrive% >nul 2>&1
 if %errorlevel% neq 0 (
     echo ERRO: Execute como Administrador.
     echo Clique com botao direito e escolha

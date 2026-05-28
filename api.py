@@ -38,6 +38,7 @@ APP_PATTERNS = {
     "illustrator": ("Illustrator", "Design"),
     "photoshop": ("Photoshop", "Design"),
     "whatsapp": ("WhatsApp", "Comunicacao"),
+    "3dsmax": ("3ds Max", "Modelagem 3D"),
 }
 
 def get_title():

@@ -78,10 +78,14 @@ goto FIM
 
 :: ================================================
 :ATUALIZAR
-:: Encerrar tracker
 schtasks /end /tn "ArchiTracker" >nul 2>&1
 schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
-taskkill /f /im python.exe >nul 2>&1
+if exist "C:\tracker-arquitetura\tracker.lock" (
+    set /p TRACKER_PID=<"C:\tracker-arquitetura\tracker.lock"
+    taskkill /f /pid !TRACKER_PID! >nul 2>&1
+) else (
+    taskkill /f /im python.exe >nul 2>&1
+)
 taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 
@@ -118,7 +122,12 @@ goto MENU
 :REINICIAR
 schtasks /end /tn "ArchiTracker" >nul 2>&1
 schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
-taskkill /f /im python.exe >nul 2>&1
+if exist "C:\tracker-arquitetura\tracker.lock" (
+    set /p TRACKER_PID=<"C:\tracker-arquitetura\tracker.lock"
+    taskkill /f /pid !TRACKER_PID! >nul 2>&1
+) else (
+    taskkill /f /im python.exe >nul 2>&1
+)
 taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock"

@@ -39,6 +39,7 @@ APP_PATTERNS = {
     "photoshop": ("Photoshop", "Design"),
     "whatsapp": ("WhatsApp", "Comunicacao"),
     "3dsmax": ("3ds Max", "Modelagem 3D"),
+    "acrobat": ("Adobe PDF", "Documento"),
 }
 
 def get_title():

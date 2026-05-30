@@ -186,7 +186,7 @@ def tracker_loop():
                     idle_registered = False
             except Exception as e:
                 print(f"Erro geral: {e}")
-            time.sleep(15)
+            time.sleep(30)
     finally:
         if os.path.exists(LOCK_FILE):
             os.remove(LOCK_FILE)

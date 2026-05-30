@@ -22,25 +22,46 @@ ORG_ID = os.getenv("ORG_ID")
 
 IDLE_LIMIT = 600
 KEEPALIVE_INTERVAL = 300
+CONFIG_REFRESH_INTERVAL = 300
 
-APP_PATTERNS = {
-    "autocad": ("AutoCAD", "CAD"),
-    "acad": ("AutoCAD", "CAD"),
-    "sketchup": ("SketchUp", "Modelagem 3D"),
-    "revit": ("Revit", "BIM"),
-    "vray": ("V-Ray", "Renderizacao"),
-    "enscape": ("Enscape", "Renderizacao"),
-    "chrome": ("Chrome", "Navegador"),
-    "firefox": ("Firefox", "Navegador"),
-    "edge": ("Edge", "Navegador"),
-    "excel": ("Excel", "Planilha"),
-    "winword": ("Word", "Documento"),
-    "illustrator": ("Illustrator", "Design"),
-    "photoshop": ("Photoshop", "Design"),
-    "whatsapp": ("WhatsApp", "Comunicacao"),
-    "3dsmax": ("3ds Max", "Modelagem 3D"),
-    "acrobat": ("Adobe PDF", "Documento"),
-}
+BROWSER_KEYS = {'chrome', 'firefox', 'edge', 'opera', 'brave', 'arc', 'vivaldi'}
+
+def load_monitored_apps():
+    try:
+        res = supabase.table("monitored_apps") \
+            .select("process_key, app_name, category") \
+            .eq("org_id", ORG_ID) \
+            .eq("active", True) \
+            .execute()
+        patterns = {}
+        for row in res.data:
+            patterns[row['process_key'].lower()] = (row['app_name'], row['category'])
+        print(f"Apps carregados: {len(patterns)}")
+        return patterns
+    except Exception as e:
+        print(f"Erro ao carregar apps: {e}")
+        return {}
+
+def load_monitored_sites():
+    try:
+        res = supabase.table("monitored_sites") \
+            .select("keyword, display_name, category") \
+            .eq("org_id", ORG_ID) \
+            .execute()
+        sites = []
+        for row in res.data:
+            sites.append((row['keyword'].lower(), row['display_name'], row['category']))
+        print(f"Sites carregados: {len(sites)}")
+        return sites
+    except Exception as e:
+        print(f"Erro ao carregar sites: {e}")
+        return []
+
+def match_site(title_lower, monitored_sites):
+    for keyword, display_name, category in monitored_sites:
+        if keyword in title_lower:
+            return display_name, category
+    return None, None
 
 def get_title():
     hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -82,11 +103,24 @@ def get_tracking_status():
 def tracker_loop():
     last_title = None
     last_recorded_at = 0
-    idle_registered = False  # controla se a pausa ja foi gravada neste periodo de idle
+    idle_registered = False
+    last_config_load = 0
+
+    app_patterns = load_monitored_apps()
+    monitored_sites = load_monitored_sites()
+
     print(f"Tracker iniciado para: {USER_ID}")
     try:
         while True:
             try:
+                now = time.time()
+                
+                # Recarrega configuracoes periodicamente
+                if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
+                    app_patterns = load_monitored_apps()
+                    monitored_sites = load_monitored_sites()
+                    last_config_load = now
+
                 tracking = get_tracking_status()
                 if tracking:
                     idle = get_idle_seconds()
@@ -113,7 +147,6 @@ def tracker_loop():
                         # Usuario voltou a usar o computador — reseta o flag de pausa
                         idle_registered = False
                         title = get_title()
-                        now = time.time()
                         new_window = title and title != last_title
                         keepalive = (
                             title
@@ -122,8 +155,15 @@ def tracker_loop():
                         )
                         if new_window or keepalive:
                             process = get_process()
-                            for key, (app_name, category) in APP_PATTERNS.items():
-                                if key in process or key in title.lower():
+                            title_lower = title.lower()
+
+                            for key, (app_name, category) in app_patterns.items():
+                                if key in process or key in title_lower:
+                                    if key in BROWSER_KEYS:
+                                        site_name, site_category = match_site(title_lower, monitored_sites)
+                                        if site_name:
+                                            app_name = site_name
+                                            category = site_category
                                     try:
                                         supabase.table("time_tracking").insert({
                                             "recorded_at": datetime.now(timezone.utc).isoformat(),

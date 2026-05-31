@@ -130,16 +130,16 @@ def tracker_loop():
                             try:
                                 supabase.table("time_tracking").insert({
                                     "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                    "app": "Pausa",
-                                    "category": "Pausa",
+                                    "app": "Inativo",
+                                    "category": "Inativo",
                                     "filename": "",
                                     "raw_title": "",
                                     "user_id": USER_ID,
                                     "org_id": ORG_ID,
                                 }).execute()
-                                print("Pausa registrada")
+                                print("Inatividade registrada")
                             except Exception as e:
-                                print(f"Erro ao registrar pausa: {e}")
+                                print(f"Erro ao registrar inatividade: {e}")
                             idle_registered = True
                         last_title = None
                         last_recorded_at = 0

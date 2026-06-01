@@ -125,86 +125,82 @@ def tracker_loop():
     monitored_sites = load_monitored_sites()
 
     print(f"Tracker iniciado para: {USER_ID}")
-    try:
-        while True:
-            try:
-                now = time.time()
+    while True:
+        try:
+            now = time.time()
 
-                # Recarrega configuracoes periodicamente
-                if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
-                    app_patterns = load_monitored_apps()
-                    monitored_sites = load_monitored_sites()
-                    last_config_load = now
+            # Recarrega configuracoes periodicamente
+            if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
+                app_patterns = load_monitored_apps()
+                monitored_sites = load_monitored_sites()
+                last_config_load = now
 
-                tracking = get_tracking_status()
-                if tracking:
-                    idle = get_idle_seconds()
-                    if idle >= IDLE_LIMIT:
-                        # Grava pausa uma unica vez ao entrar em idle
-                        if last_title is not None and not idle_registered:
-                            try:
-                                supabase.table("time_tracking").insert({
-                                    "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                    "app": "Inativo",
-                                    "category": "Inativo",
-                                    "filename": "",
-                                    "raw_title": "",
-                                    "user_id": USER_ID,
-                                    "org_id": ORG_ID,
-                                }).execute()
-                                print("Inatividade registrada")
-                            except Exception as e:
-                                print(f"Erro ao registrar inatividade: {e}")
-                            idle_registered = True
-                        last_title = None
-                        last_recorded_at = 0
-                    else:
-                        # Usuario voltou a usar o computador — reseta o flag de pausa
-                        idle_registered = False
-                        title = get_title()
-                        new_window = title and title != last_title
-                        keepalive = (
-                            title
-                            and title == last_title
-                            and (now - last_recorded_at) >= KEEPALIVE_INTERVAL
-                        )
-                        if new_window or keepalive:
-                            process = get_process()
-                            title_lower = title.lower()
-
-                            for key, (app_name, category) in app_patterns.items():
-                                if key in process or key in title_lower:
-                                    if key in BROWSER_KEYS:
-                                        site_name, site_category = match_site(title_lower, monitored_sites)
-                                        if site_name:
-                                            app_name = site_name
-                                            category = site_category
-                                    try:
-                                        supabase.table("time_tracking").insert({
-                                            "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                            "app": app_name,
-                                            "category": category,
-                                            "filename": title[:80],
-                                            "raw_title": title,
-                                            "user_id": USER_ID,
-                                            "org_id": ORG_ID,
-                                        }).execute()
-                                        print(f"OK: {app_name} - {title[:50]}")
-                                    except Exception as e:
-                                        print(f"Erro: {e}")
-                                    break
-                            last_title = title
-                            last_recorded_at = now
-                else:
+            tracking = get_tracking_status()
+            if tracking:
+                idle = get_idle_seconds()
+                if idle >= IDLE_LIMIT:
+                    # Grava pausa uma unica vez ao entrar em idle
+                    if last_title is not None and not idle_registered:
+                        try:
+                            supabase.table("time_tracking").insert({
+                                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                                "app": "Inativo",
+                                "category": "Inativo",
+                                "filename": "",
+                                "raw_title": "",
+                                "user_id": USER_ID,
+                                "org_id": ORG_ID,
+                            }).execute()
+                            print("Inatividade registrada")
+                        except Exception as e:
+                            print(f"Erro ao registrar inatividade: {e}")
+                        idle_registered = True
                     last_title = None
                     last_recorded_at = 0
+                else:
+                    # Usuario voltou a usar o computador — reseta o flag de pausa
                     idle_registered = False
-            except Exception as e:
-                print(f"Erro geral: {e}")
-            time.sleep(30)
-    finally:
-        if os.path.exists(LOCK_FILE):
-            os.remove(LOCK_FILE)
+                    title = get_title()
+                    new_window = title and title != last_title
+                    keepalive = (
+                        title
+                        and title == last_title
+                        and (now - last_recorded_at) >= KEEPALIVE_INTERVAL
+                    )
+                    if new_window or keepalive:
+                        process = get_process()
+                        title_lower = title.lower()
+
+                        for key, (app_name, category) in app_patterns.items():
+                            if key in process or key in title_lower:
+                                if key in BROWSER_KEYS:
+                                    site_name, site_category = match_site(title_lower, monitored_sites)
+                                    if site_name:
+                                        app_name = site_name
+                                        category = site_category
+                                try:
+                                    supabase.table("time_tracking").insert({
+                                        "recorded_at": datetime.now(timezone.utc).isoformat(),
+                                        "app": app_name,
+                                        "category": category,
+                                        "filename": title[:80],
+                                        "raw_title": title,
+                                        "user_id": USER_ID,
+                                        "org_id": ORG_ID,
+                                    }).execute()
+                                    print(f"OK: {app_name} - {title[:50]}")
+                                except Exception as e:
+                                    print(f"Erro: {e}")
+                                break
+                        last_title = title
+                        last_recorded_at = now
+            else:
+                last_title = None
+                last_recorded_at = 0
+                idle_registered = False
+        except Exception as e:
+            print(f"Erro geral: {e}")
+        time.sleep(30)
 
 if __name__ == "__main__":
     tracker_loop()

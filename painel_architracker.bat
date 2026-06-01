@@ -105,7 +105,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/version.txt' -OutFile '%PASTA%\version.txt' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 
 if %ERR% equ 0 (
-    if exist "%PASTA%\tracker.lock" del /f /q "%PASTA%\tracker.lock"
     timeout /t 1 /nobreak >nul
     schtasks /run /tn "ArchiTracker" >nul 2>&1
     powershell -NoProfile -Command ^
@@ -130,7 +129,6 @@ if exist "C:\tracker-arquitetura\tracker.lock" (
 )
 taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
-if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock"
 schtasks /run /tn "ArchiTracker" >nul 2>&1
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^

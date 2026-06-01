@@ -11,12 +11,27 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 USER_ID = os.getenv("USER_ID")
 LOCK_FILE = r"C:\tracker-arquitetura\tracker.lock"
 
+# Verificacao de instancia unica com PID e criacao atomica
 if os.path.exists(LOCK_FILE):
-    print("Tracker ja esta rodando. Encerrando esta instancia.")
-    sys.exit(0)
+    try:
+        with open(LOCK_FILE, 'r') as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)  # nao mata — so verifica se o processo existe
+        print("Tracker ja esta rodando (PID {}). Encerrando esta instancia.".format(pid))
+        sys.exit(0)
+    except (OSError, ValueError):
+        # Processo nao existe mais — lock residual, pode apagar
+        print("Lock residual encontrado (processo morto). Removendo e continuando.")
+        os.remove(LOCK_FILE)
 
-with open(LOCK_FILE, "w") as f:
-    f.write(str(os.getpid()))
+# Criacao atomica do lock — garante que apenas uma instancia passa mesmo em race condition
+try:
+    lock_handle = open(LOCK_FILE, 'x')
+    lock_handle.write(str(os.getpid()))
+    lock_handle.close()
+except FileExistsError:
+    print("Tracker ja esta rodando (lock criado simultaneamente). Encerrando esta instancia.")
+    sys.exit(0)
 
 ORG_ID = os.getenv("ORG_ID")
 
@@ -114,7 +129,7 @@ def tracker_loop():
         while True:
             try:
                 now = time.time()
-                
+
                 # Recarrega configuracoes periodicamente
                 if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
                     app_patterns = load_monitored_apps()

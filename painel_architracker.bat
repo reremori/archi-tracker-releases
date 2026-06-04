@@ -3,16 +3,8 @@ setlocal enabledelayedexpansion
 
 :MENU
 
-set TMP_STATUS=C:\tracker-arquitetura\tmp_status.txt
-set TMP_VER=C:\tracker-arquitetura\tmp_ver.txt
-set TMP_MSG=C:\tracker-arquitetura\tmp_msg.txt
-set TMP_CONFIRM=C:\tracker-arquitetura\tmp_confirm.txt
-
 :: Verificar status do tracker
-powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; $result = if (($p | Measure-Object).Count -gt 0) { 'rodando' } else { 'parado' }; Set-Content -Path 'C:\tracker-arquitetura\tmp_status.txt' -Value $result"
-set /p _ST=<"C:\tracker-arquitetura\tmp_status.txt"
-del "C:\tracker-arquitetura\tmp_status.txt" >nul 2>&1
-if "%_ST%"=="rodando" (set STATUS=Rodando) else (set STATUS=Parado)
+if exist "C:\tracker-arquitetura\tracker.running" (set STATUS=Rodando) else (set STATUS=Parado)
 
 :: Ler versao instalada
 set VER_LOCAL=desconhecida
@@ -21,9 +13,9 @@ if exist "C:\tracker-arquitetura\version.txt" (
 )
 
 :: Ler versao disponivel no GitHub
-powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt' -UseBasicParsing).Content.Trim() } catch { 'sem conexao' }" > "%TMP_VER%" 2>nul
-set /p VER_REMOTE=<"%TMP_VER%"
-del "%TMP_VER%" >nul 2>&1
+powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt' -UseBasicParsing).Content.Trim() } catch { 'sem conexao' }" > "C:\tracker-arquitetura\tmp_ver.txt" 2>nul
+set /p VER_REMOTE=<"C:\tracker-arquitetura\tmp_ver.txt"
+del "C:\tracker-arquitetura\tmp_ver.txt" >nul 2>&1
 
 :: Montar linha de versao
 if "%VER_REMOTE%"=="sem conexao" (
@@ -132,9 +124,11 @@ goto MENU
 
 :: ================================================
 :STATUS
-powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; $result = if (($p | Measure-Object).Count -gt 0) { 'Tracker esta RODANDO.' } else { 'Tracker esta PARADO.' }; Set-Content -Path 'C:\tracker-arquitetura\tmp_msg.txt' -Value $result"
-set /p MSG=<"C:\tracker-arquitetura\tmp_msg.txt"
-del "C:\tracker-arquitetura\tmp_msg.txt" >nul 2>&1
+if exist "C:\tracker-arquitetura\tracker.running" (
+    set MSG=Tracker esta RODANDO.
+) else (
+    set MSG=Tracker esta PARADO.
+)
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
     "[System.Windows.Forms.MessageBox]::Show('%MSG%', 'ArchiTracker - Status', 'OK', 'Information')" >nul 2>&1

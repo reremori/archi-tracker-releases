@@ -3,10 +3,15 @@ setlocal enabledelayedexpansion
 
 :MENU
 
+set TMP_STATUS=C:\tracker-arquitetura\tmp_status.txt
+set TMP_VER=C:\tracker-arquitetura\tmp_ver.txt
+set TMP_MSG=C:\tracker-arquitetura\tmp_msg.txt
+set TMP_CONFIRM=C:\tracker-arquitetura\tmp_confirm.txt
+
 :: Verificar status do tracker
-powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'rodando' } else { 'parado' }" > "%TEMP%\archi_status.txt" 2>nul
-set /p _ST=<"%TEMP%\archi_status.txt"
-del "%TEMP%\archi_status.txt" >nul 2>&1
+powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'rodando' } else { 'parado' }" > "%TMP_STATUS%" 2>nul
+set /p _ST=<"%TMP_STATUS%"
+del "%TMP_STATUS%" >nul 2>&1
 if "%_ST%"=="rodando" (set STATUS=Rodando) else (set STATUS=Parado)
 
 :: Ler versao instalada
@@ -16,9 +21,9 @@ if exist "C:\tracker-arquitetura\version.txt" (
 )
 
 :: Ler versao disponivel no GitHub
-powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt' -UseBasicParsing).Content.Trim() } catch { 'sem conexao' }" > "%TEMP%\archi_ver_remote.txt" 2>nul
-set /p VER_REMOTE=<"%TEMP%\archi_ver_remote.txt"
-del "%TEMP%\archi_ver_remote.txt" >nul 2>&1
+powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt' -UseBasicParsing).Content.Trim() } catch { 'sem conexao' }" > "%TMP_VER%" 2>nul
+set /p VER_REMOTE=<"%TMP_VER%"
+del "%TMP_VER%" >nul 2>&1
 
 :: Montar linha de versao
 if "%VER_REMOTE%"=="sem conexao" (
@@ -82,7 +87,6 @@ powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter 'name=''pyth
 taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 
-:: Baixar todos os arquivos
 set BASE_URL=https://raw.githubusercontent.com/reremori/archi-tracker-releases/main
 set PASTA=C:\tracker-arquitetura
 set ERR=0
@@ -96,10 +100,11 @@ if %errorlevel% neq 0 set ERR=1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/corrigir_architracker.bat' -OutFile '%PASTA%\corrigir_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/painel_architracker.bat' -OutFile '%PASTA%\painel_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/version.txt' -OutFile '%PASTA%\version.txt' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1','C:\tracker-arquitetura\watchdog.ps1')" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('%BASE_URL%/watchdog.ps1','%PASTA%\watchdog.ps1')" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('%BASE_URL%/abrir_painel.vbs','%PASTA%\abrir_painel.vbs')" >nul 2>&1
 
 if %ERR% equ 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\painel_architracker.bat'; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save(); $bytes = [System.IO.File]::ReadAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $bytes[21] = $bytes[21] -bor 0x20; [System.IO.File]::WriteAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk', $bytes)" >nul 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\abrir_painel.vbs'; $s.Arguments = ''; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save()" >nul 2>&1
     timeout /t 1 /nobreak >nul
     schtasks /run /tn "ArchiTracker" >nul 2>&1
     powershell -NoProfile -Command ^
@@ -127,9 +132,9 @@ goto MENU
 
 :: ================================================
 :STATUS
-powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'Tracker esta RODANDO.' } else { 'Tracker esta PARADO.' }" > "%TEMP%\archi_msg.txt" 2>nul
-set /p MSG=<"%TEMP%\archi_msg.txt"
-del "%TEMP%\archi_msg.txt" >nul 2>&1
+powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'Tracker esta RODANDO.' } else { 'Tracker esta PARADO.' }" > "%TMP_MSG%" 2>nul
+set /p MSG=<"%TMP_MSG%"
+del "%TMP_MSG%" >nul 2>&1
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
     "[System.Windows.Forms.MessageBox]::Show('%MSG%', 'ArchiTracker - Status', 'OK', 'Information')" >nul 2>&1
@@ -140,10 +145,10 @@ goto MENU
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
     "$r = [System.Windows.Forms.MessageBox]::Show('Isso vai remover o ArchiTracker desta maquina. Os dados no Supabase nao serao apagados. Deseja continuar?', 'ArchiTracker - Desinstalar', 'YesNo', 'Warning'); " ^
-    "Write-Output $r" > "%TEMP%\archi_confirm.txt"
+    "Write-Output $r" > "%TMP_CONFIRM%"
 
-set /p CONFIRM=<"%TEMP%\archi_confirm.txt"
-del "%TEMP%\archi_confirm.txt" >nul 2>&1
+set /p CONFIRM=<"%TMP_CONFIRM%"
+del "%TMP_CONFIRM%" >nul 2>&1
 
 if /i "%CONFIRM%"=="Yes" (
     schtasks /end /tn "ArchiTracker" >nul 2>&1
@@ -155,12 +160,10 @@ if /i "%CONFIRM%"=="Yes" (
     timeout /t 3 /nobreak >nul
     schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
     schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
-    if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock" >nul 2>&1
     timeout /t 2 /nobreak >nul
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Path 'C:\tracker-arquitetura' -Recurse -Force -ErrorAction SilentlyContinue"
     timeout /t 2 /nobreak >nul
     if exist "C:\tracker-arquitetura" rd /s /q "C:\tracker-arquitetura" >nul 2>&1
-    :: Remover atalho da area de trabalho
     if exist "%PUBLIC%\Desktop\ArchiTracker.lnk" del /f /q "%PUBLIC%\Desktop\ArchiTracker.lnk" >nul 2>&1
     if exist "%USERPROFILE%\Desktop\ArchiTracker.lnk" del /f /q "%USERPROFILE%\Desktop\ArchiTracker.lnk" >nul 2>&1
     powershell -NoProfile -Command ^

@@ -187,10 +187,9 @@ def tracker_loop():
             except Exception as e:
                 print(f"Erro geral: {e}")
             time.sleep(30)
-    finally:
-    if os.path.exists(SENTINEL_FILE):
-        os.remove(SENTINEL_FILE)
-        pass
+finally:
+        if os.path.exists(SENTINEL_FILE):
+            os.remove(SENTINEL_FILE)
 
 if __name__ == "__main__":
     tracker_loop()

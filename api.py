@@ -9,31 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 USER_ID = os.getenv("USER_ID")
-LOCK_FILE = r"C:\tracker-arquitetura\tracker.lock"
-
-# Verificacao de instancia unica com PID e criacao atomica
-if os.path.exists(LOCK_FILE):
-    try:
-        with open(LOCK_FILE, 'r') as f:
-            pid = int(f.read().strip())
-        os.kill(pid, 0)  # nao mata — so verifica se o processo existe
-        print("Tracker ja esta rodando (PID {}). Encerrando esta instancia.".format(pid))
-        sys.exit(0)
-    except (OSError, ValueError):
-        # Processo nao existe mais — lock residual, pode apagar
-        print("Lock residual encontrado (processo morto). Removendo e continuando.")
-        os.remove(LOCK_FILE)
-
-# Criacao atomica do lock — garante que apenas uma instancia passa mesmo em race condition
-try:
-    lock_handle = open(LOCK_FILE, 'x')
-    lock_handle.write(str(os.getpid()))
-    lock_handle.close()
-except FileExistsError:
-    print("Tracker ja esta rodando (lock criado simultaneamente). Encerrando esta instancia.")
-    sys.exit(0)
-
 ORG_ID = os.getenv("ORG_ID")
+
+# Instancia unica via Named Mutex do Windows.
+# O kernel libera automaticamente quando o processo morre — sem lock residual.
+_mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ArchiTrackerMutex")
+if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    print("Tracker ja esta rodando. Encerrando esta instancia.")
+    sys.exit(0)
 
 IDLE_LIMIT = 600
 KEEPALIVE_INTERVAL = 300
@@ -125,82 +108,83 @@ def tracker_loop():
     monitored_sites = load_monitored_sites()
 
     print(f"Tracker iniciado para: {USER_ID}")
-    while True:
-        try:
-            now = time.time()
+    try:
+        while True:
+            try:
+                now = time.time()
 
-            # Recarrega configuracoes periodicamente
-            if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
-                app_patterns = load_monitored_apps()
-                monitored_sites = load_monitored_sites()
-                last_config_load = now
+                if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
+                    app_patterns = load_monitored_apps()
+                    monitored_sites = load_monitored_sites()
+                    last_config_load = now
 
-            tracking = get_tracking_status()
-            if tracking:
-                idle = get_idle_seconds()
-                if idle >= IDLE_LIMIT:
-                    # Grava pausa uma unica vez ao entrar em idle
-                    if last_title is not None and not idle_registered:
-                        try:
-                            supabase.table("time_tracking").insert({
-                                "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                "app": "Inativo",
-                                "category": "Inativo",
-                                "filename": "",
-                                "raw_title": "",
-                                "user_id": USER_ID,
-                                "org_id": ORG_ID,
-                            }).execute()
-                            print("Inatividade registrada")
-                        except Exception as e:
-                            print(f"Erro ao registrar inatividade: {e}")
-                        idle_registered = True
+                tracking = get_tracking_status()
+                if tracking:
+                    idle = get_idle_seconds()
+                    if idle >= IDLE_LIMIT:
+                        if last_title is not None and not idle_registered:
+                            try:
+                                supabase.table("time_tracking").insert({
+                                    "recorded_at": datetime.now(timezone.utc).isoformat(),
+                                    "app": "Inativo",
+                                    "category": "Inativo",
+                                    "filename": "",
+                                    "raw_title": "",
+                                    "user_id": USER_ID,
+                                    "org_id": ORG_ID,
+                                }).execute()
+                                print("Inatividade registrada")
+                            except Exception as e:
+                                print(f"Erro ao registrar inatividade: {e}")
+                            idle_registered = True
+                        last_title = None
+                        last_recorded_at = 0
+                    else:
+                        idle_registered = False
+                        title = get_title()
+                        new_window = title and title != last_title
+                        keepalive = (
+                            title
+                            and title == last_title
+                            and (now - last_recorded_at) >= KEEPALIVE_INTERVAL
+                        )
+                        if new_window or keepalive:
+                            process = get_process()
+                            title_lower = title.lower()
+
+                            for key, (app_name, category) in app_patterns.items():
+                                if key in process or key in title_lower:
+                                    if key in BROWSER_KEYS:
+                                        site_name, site_category = match_site(title_lower, monitored_sites)
+                                        if site_name:
+                                            app_name = site_name
+                                            category = site_category
+                                    try:
+                                        supabase.table("time_tracking").insert({
+                                            "recorded_at": datetime.now(timezone.utc).isoformat(),
+                                            "app": app_name,
+                                            "category": category,
+                                            "filename": title[:80],
+                                            "raw_title": title,
+                                            "user_id": USER_ID,
+                                            "org_id": ORG_ID,
+                                        }).execute()
+                                        print(f"OK: {app_name} - {title[:50]}")
+                                    except Exception as e:
+                                        print(f"Erro: {e}")
+                                    break
+                            last_title = title
+                            last_recorded_at = now
+                else:
                     last_title = None
                     last_recorded_at = 0
-                else:
-                    # Usuario voltou a usar o computador — reseta o flag de pausa
                     idle_registered = False
-                    title = get_title()
-                    new_window = title and title != last_title
-                    keepalive = (
-                        title
-                        and title == last_title
-                        and (now - last_recorded_at) >= KEEPALIVE_INTERVAL
-                    )
-                    if new_window or keepalive:
-                        process = get_process()
-                        title_lower = title.lower()
-
-                        for key, (app_name, category) in app_patterns.items():
-                            if key in process or key in title_lower:
-                                if key in BROWSER_KEYS:
-                                    site_name, site_category = match_site(title_lower, monitored_sites)
-                                    if site_name:
-                                        app_name = site_name
-                                        category = site_category
-                                try:
-                                    supabase.table("time_tracking").insert({
-                                        "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                        "app": app_name,
-                                        "category": category,
-                                        "filename": title[:80],
-                                        "raw_title": title,
-                                        "user_id": USER_ID,
-                                        "org_id": ORG_ID,
-                                    }).execute()
-                                    print(f"OK: {app_name} - {title[:50]}")
-                                except Exception as e:
-                                    print(f"Erro: {e}")
-                                break
-                        last_title = title
-                        last_recorded_at = now
-            else:
-                last_title = None
-                last_recorded_at = 0
-                idle_registered = False
-        except Exception as e:
-            print(f"Erro geral: {e}")
-        time.sleep(30)
+            except Exception as e:
+                print(f"Erro geral: {e}")
+            time.sleep(30)
+    finally:
+        # Mutex liberado automaticamente pelo kernel. Nada para limpar.
+        pass
 
 if __name__ == "__main__":
     tracker_loop()

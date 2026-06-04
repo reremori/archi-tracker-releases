@@ -84,10 +84,10 @@ set PASTA=C:\tracker-arquitetura
 set ERR=0
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/api.py' -OutFile '%PASTA%\api.py' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-if %errorlevel% neq 0 set ERR=1
+if not %errorlevel% == 0 set ERR=1
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/iniciar_invisivel.vbs' -OutFile '%PASTA%\iniciar_invisivel.vbs' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-if %errorlevel% neq 0 set ERR=1
+if not %errorlevel% == 0 set ERR=1
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/corrigir_architracker.bat' -OutFile '%PASTA%\corrigir_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/painel_architracker.bat' -OutFile '%PASTA%\painel_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
@@ -95,7 +95,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '
 powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('%BASE_URL%/watchdog.ps1','%PASTA%\watchdog.ps1')" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('%BASE_URL%/abrir_painel.vbs','%PASTA%\abrir_painel.vbs')" >nul 2>&1
 
-if %ERR% equ 0 (
+if not %ERR% == 1 (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\abrir_painel.vbs'; $s.Arguments = ''; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save()" >nul 2>&1
     timeout /t 1 /nobreak >nul
     schtasks /run /tn "ArchiTracker" >nul 2>&1
@@ -139,10 +139,10 @@ goto MENU
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
     "$r = [System.Windows.Forms.MessageBox]::Show('Isso vai remover o ArchiTracker desta maquina. Os dados no Supabase nao serao apagados. Deseja continuar?', 'ArchiTracker - Desinstalar', 'YesNo', 'Warning'); " ^
-    "Write-Output $r" > "%TMP_CONFIRM%"
+    "Write-Output $r" > "C:\tracker-arquitetura\tmp_confirm.txt"
 
-set /p CONFIRM=<"%TMP_CONFIRM%"
-del "%TMP_CONFIRM%" >nul 2>&1
+set /p CONFIRM=<"C:\tracker-arquitetura\tmp_confirm.txt"
+del "C:\tracker-arquitetura\tmp_confirm.txt" >nul 2>&1
 
 if /i "%CONFIRM%"=="Yes" (
     schtasks /end /tn "ArchiTracker" >nul 2>&1

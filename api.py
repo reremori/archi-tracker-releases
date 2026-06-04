@@ -186,8 +186,8 @@ def tracker_loop():
                     idle_registered = False
             except Exception as e:
                 print(f"Erro geral: {e}")
-            time.sleep(30)
-finally:
+time.sleep(30)
+    finally:
         if os.path.exists(SENTINEL_FILE):
             os.remove(SENTINEL_FILE)
 

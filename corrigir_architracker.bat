@@ -33,9 +33,7 @@ echo CreateObject^("WScript.Shell"^).Run "C:\tracker-arquitetura\venv\Scripts\py
 echo       OK
 
 echo [3/5] Baixando watchdog.ps1...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1' -OutFile 'C:\tracker-arquitetura\watchdog.ps1' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-echo       OK
-
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1','C:\tracker-arquitetura\watchdog.ps1')"
 echo [4/5] Reconfigurando tarefas no Agendador...
 schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
 schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1

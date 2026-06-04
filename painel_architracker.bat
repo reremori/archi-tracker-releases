@@ -4,12 +4,10 @@ setlocal enabledelayedexpansion
 :MENU
 
 :: Verificar status do tracker
-tasklist /fi "imagename eq python.exe" 2>nul | find /i "python.exe" >nul 2>&1
-if %errorlevel% equ 0 (
-    set STATUS=Rodando
-) else (
-    set STATUS=Parado
-)
+powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'rodando' } else { 'parado' }" > "%TEMP%\archi_status.txt" 2>nul
+set /p _ST=<"%TEMP%\archi_status.txt"
+del "%TEMP%\archi_status.txt" >nul 2>&1
+if "%_ST%"=="rodando" (set STATUS=Rodando) else (set STATUS=Parado)
 
 :: Ler versao instalada
 set VER_LOCAL=desconhecida
@@ -121,14 +119,9 @@ goto MENU
 :REINICIAR
 schtasks /end /tn "ArchiTracker" >nul 2>&1
 schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
-if exist "C:\tracker-arquitetura\tracker.lock" (
-    set /p TRACKER_PID=<"C:\tracker-arquitetura\tracker.lock"
-    taskkill /f /pid !TRACKER_PID! >nul 2>&1
-) else (
-    taskkill /f /im python.exe >nul 2>&1
-)
+powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
 taskkill /f /im wscript.exe >nul 2>&1
-timeout /t 3 /nobreak >nul
+timeout /t 4 /nobreak >nul
 schtasks /run /tn "ArchiTracker" >nul 2>&1
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
@@ -137,12 +130,9 @@ goto MENU
 
 :: ================================================
 :STATUS
-tasklist /fi "imagename eq python.exe" 2>nul | find /i "python.exe" >nul 2>&1
-if %errorlevel% equ 0 (
-    set MSG=Tracker esta RODANDO.
-) else (
-    set MSG=Tracker esta PARADO.
-)
+powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'Tracker esta RODANDO.' } else { 'Tracker esta PARADO.' }" > "%TEMP%\archi_msg.txt" 2>nul
+set /p MSG=<"%TEMP%\archi_msg.txt"
+del "%TEMP%\archi_msg.txt" >nul 2>&1
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
     "[System.Windows.Forms.MessageBox]::Show('%MSG%', 'ArchiTracker - Status', 'OK', 'Information')" >nul 2>&1

@@ -96,8 +96,10 @@ if %errorlevel% neq 0 set ERR=1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/corrigir_architracker.bat' -OutFile '%PASTA%\corrigir_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/painel_architracker.bat' -OutFile '%PASTA%\painel_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/version.txt' -OutFile '%PASTA%\version.txt' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1','C:\tracker-arquitetura\watchdog.ps1')" >nul 2>&1
 
 if %ERR% equ 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\painel_architracker.bat'; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save(); $bytes = [System.IO.File]::ReadAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $bytes[21] = $bytes[21] -bor 0x20; [System.IO.File]::WriteAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk', $bytes)" >nul 2>&1
     timeout /t 1 /nobreak >nul
     schtasks /run /tn "ArchiTracker" >nul 2>&1
     powershell -NoProfile -Command ^

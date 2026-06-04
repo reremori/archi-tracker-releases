@@ -32,18 +32,8 @@ echo CreateObject^("WScript.Shell"^).Run "C:\tracker-arquitetura\venv\Scripts\py
 ) > "C:\tracker-arquitetura\iniciar_invisivel.vbs"
 echo       OK
 
-echo [3/5] Criando watchdog.ps1...
-(
-echo $procs = Get-WmiObject Win32_Process -Filter "name='python.exe'" ^| Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }
-echo $count = ^($procs ^| Measure-Object^).Count
-echo if ^($count -eq 0^) {
-echo     Start-Process wscript.exe -ArgumentList "C:\tracker-arquitetura\iniciar_invisivel.vbs" -WindowStyle Hidden
-echo } elseif ^($count -gt 1^) {
-echo     $procs ^| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-echo     Start-Sleep 3
-echo     Start-Process wscript.exe -ArgumentList "C:\tracker-arquitetura\iniciar_invisivel.vbs" -WindowStyle Hidden
-echo }
-) > "C:\tracker-arquitetura\watchdog.ps1"
+echo [3/5] Baixando watchdog.ps1...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1' -OutFile 'C:\tracker-arquitetura\watchdog.ps1' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
 echo       OK
 
 echo [4/5] Reconfigurando tarefas no Agendador...

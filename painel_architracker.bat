@@ -79,34 +79,9 @@ powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter 'name=''pyth
 taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 
-set BASE_URL=https://raw.githubusercontent.com/reremori/archi-tracker-releases/main
-set PASTA=C:\tracker-arquitetura
-set ERR=0
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/corrigir_architracker.bat','C:\tracker-arquitetura\corrigir_architracker.bat')"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/api.py' -OutFile '%PASTA%\api.py' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-if not %errorlevel% == 0 set ERR=1
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/iniciar_invisivel.vbs' -OutFile '%PASTA%\iniciar_invisivel.vbs' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-if not %errorlevel% == 0 set ERR=1
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/corrigir_architracker.bat' -OutFile '%PASTA%\corrigir_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/painel_architracker.bat' -OutFile '%PASTA%\painel_architracker.bat' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%BASE_URL%/version.txt' -OutFile '%PASTA%\version.txt' -UseBasicParsing -TimeoutSec 30" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('%BASE_URL%/watchdog.ps1','%PASTA%\watchdog.ps1')" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('%BASE_URL%/abrir_painel.vbs','%PASTA%\abrir_painel.vbs')" >nul 2>&1
-
-if not %ERR% == 1 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\abrir_painel.vbs'; $s.Arguments = ''; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save()" >nul 2>&1
-    timeout /t 1 /nobreak >nul
-    schtasks /run /tn "ArchiTracker" >nul 2>&1
-    powershell -NoProfile -Command ^
-        "Add-Type -AssemblyName System.Windows.Forms; " ^
-        "[System.Windows.Forms.MessageBox]::Show('Tracker atualizado para versao %VER_REMOTE% e reiniciado!', 'ArchiTracker', 'OK', 'Information')" >nul 2>&1
-) else (
-    powershell -NoProfile -Command ^
-        "Add-Type -AssemblyName System.Windows.Forms; " ^
-        "[System.Windows.Forms.MessageBox]::Show('Erro ao baixar atualizacao. Verifique sua conexao com a internet.', 'ArchiTracker', 'OK', 'Error')" >nul 2>&1
-)
+cmd /c "C:\tracker-arquitetura\corrigir_architracker.bat"
 goto MENU
 
 :: ================================================

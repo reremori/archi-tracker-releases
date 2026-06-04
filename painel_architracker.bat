@@ -9,9 +9,9 @@ set TMP_MSG=C:\tracker-arquitetura\tmp_msg.txt
 set TMP_CONFIRM=C:\tracker-arquitetura\tmp_confirm.txt
 
 :: Verificar status do tracker
-powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'rodando' } else { 'parado' }" > "%TMP_STATUS%" 2>nul
-set /p _ST=<"%TMP_STATUS%"
-del "%TMP_STATUS%" >nul 2>&1
+powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; $result = if (($p | Measure-Object).Count -gt 0) { 'rodando' } else { 'parado' }; Set-Content -Path 'C:\tracker-arquitetura\tmp_status.txt' -Value $result"
+set /p _ST=<"C:\tracker-arquitetura\tmp_status.txt"
+del "C:\tracker-arquitetura\tmp_status.txt" >nul 2>&1
 if "%_ST%"=="rodando" (set STATUS=Rodando) else (set STATUS=Parado)
 
 :: Ler versao instalada
@@ -132,9 +132,9 @@ goto MENU
 
 :: ================================================
 :STATUS
-powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; if (($p | Measure-Object).Count -gt 0) { 'Tracker esta RODANDO.' } else { 'Tracker esta PARADO.' }" > "%TMP_MSG%" 2>nul
-set /p MSG=<"%TMP_MSG%"
-del "%TMP_MSG%" >nul 2>&1
+powershell -NoProfile -Command "$p = Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }; $result = if (($p | Measure-Object).Count -gt 0) { 'Tracker esta RODANDO.' } else { 'Tracker esta PARADO.' }; Set-Content -Path 'C:\tracker-arquitetura\tmp_msg.txt' -Value $result"
+set /p MSG=<"C:\tracker-arquitetura\tmp_msg.txt"
+del "C:\tracker-arquitetura\tmp_msg.txt" >nul 2>&1
 powershell -NoProfile -Command ^
     "Add-Type -AssemblyName System.Windows.Forms; " ^
     "[System.Windows.Forms.MessageBox]::Show('%MSG%', 'ArchiTracker - Status', 'OK', 'Information')" >nul 2>&1

@@ -17,7 +17,7 @@ if %errorlevel% neq 0 (
     rmdir "%SystemRoot%\System32\ArchiAdmin" >nul 2>&1
 )
 
-echo [1/5] Encerrando tracker atual...
+echo [1/6] Encerrando tracker atual...
 schtasks /end /tn "ArchiTracker" >nul 2>&1
 schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
 timeout /t 3 /nobreak >nul
@@ -26,15 +26,17 @@ taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 echo       OK
 
-echo [2/5] Atualizando iniciar_invisivel.vbs...
-(
-echo CreateObject^("WScript.Shell"^).Run "C:\tracker-arquitetura\venv\Scripts\python.exe C:\tracker-arquitetura\api.py", 0, False
-) > "C:\tracker-arquitetura\iniciar_invisivel.vbs"
+echo [2/6] Baixando arquivos atualizados...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/iniciar_invisivel.vbs','C:\tracker-arquitetura\iniciar_invisivel.vbs')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1','C:\tracker-arquitetura\watchdog.ps1')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/abrir_painel.vbs','C:\tracker-arquitetura\abrir_painel.vbs')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/api.py','C:\tracker-arquitetura\api.py')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/painel_architracker.bat','C:\tracker-arquitetura\painel_architracker.bat')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/corrigir_architracker.bat','C:\tracker-arquitetura\corrigir_architracker.bat')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt','C:\tracker-arquitetura\version.txt')"
 echo       OK
 
-echo [3/6] Baixando watchdog.ps1...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1','C:\tracker-arquitetura\watchdog.ps1')"
-echo [4/6] Reconfigurando tarefas no Agendador...
+echo [3/6] Reconfigurando tarefas no Agendador...
 schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
 schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
 timeout /t 1 /nobreak >nul
@@ -42,8 +44,13 @@ schtasks /create /tn "ArchiTracker" /tr "wscript.exe \"C:\tracker-arquitetura\in
 schtasks /create /tn "ArchiTrackerWatchdog" /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\tracker-arquitetura\watchdog.ps1\"" /sc minute /mo 30 /rl highest /f >nul 2>&1
 echo       OK
 
-echo [5/6] Recriando atalho na area de trabalho...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\painel_architracker.bat'; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save(); $bytes = [System.IO.File]::ReadAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $bytes[21] = $bytes[21] -bor 0x20; [System.IO.File]::WriteAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk', $bytes)"
+echo [4/6] Recriando atalho na area de trabalho...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\abrir_painel.vbs'; $s.Arguments = ''; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save()"
+echo       OK
+
+echo [5/6] Limpando arquivos residuais...
+if exist "C:\tracker-arquitetura\tracker.lock" del /f /q "C:\tracker-arquitetura\tracker.lock" >nul 2>&1
+if exist "C:\tracker-arquitetura\tracker.running" del /f /q "C:\tracker-arquitetura\tracker.running" >nul 2>&1
 echo       OK
 
 echo [6/6] Iniciando tracker agora...

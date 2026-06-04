@@ -99,6 +99,7 @@ def get_tracking_status():
         return False
 
 def tracker_loop():
+    SENTINEL_FILE = r"C:\tracker-arquitetura\tracker.running"
     last_title = None
     last_recorded_at = 0
     idle_registered = False
@@ -108,6 +109,10 @@ def tracker_loop():
     monitored_sites = load_monitored_sites()
 
     print(f"Tracker iniciado para: {USER_ID}")
+
+    with open(SENTINEL_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
     try:
         while True:
             try:
@@ -183,7 +188,8 @@ def tracker_loop():
                 print(f"Erro geral: {e}")
             time.sleep(30)
     finally:
-        # Mutex liberado automaticamente pelo kernel. Nada para limpar.
+    if os.path.exists(SENTINEL_FILE):
+        os.remove(SENTINEL_FILE)
         pass
 
 if __name__ == "__main__":

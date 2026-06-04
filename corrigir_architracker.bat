@@ -32,9 +32,9 @@ echo CreateObject^("WScript.Shell"^).Run "C:\tracker-arquitetura\venv\Scripts\py
 ) > "C:\tracker-arquitetura\iniciar_invisivel.vbs"
 echo       OK
 
-echo [3/5] Baixando watchdog.ps1...
+echo [3/6] Baixando watchdog.ps1...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/watchdog.ps1','C:\tracker-arquitetura\watchdog.ps1')"
-echo [4/5] Reconfigurando tarefas no Agendador...
+echo [4/6] Reconfigurando tarefas no Agendador...
 schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
 schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
 timeout /t 1 /nobreak >nul
@@ -42,7 +42,11 @@ schtasks /create /tn "ArchiTracker" /tr "wscript.exe \"C:\tracker-arquitetura\in
 schtasks /create /tn "ArchiTrackerWatchdog" /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\tracker-arquitetura\watchdog.ps1\"" /sc minute /mo 30 /rl highest /f >nul 2>&1
 echo       OK
 
-echo [5/5] Iniciando tracker agora...
+echo [5/6] Recriando atalho na area de trabalho...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -COM WScript.Shell).CreateShortcut([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $s.TargetPath = 'C:\tracker-arquitetura\painel_architracker.bat'; $s.WorkingDirectory = 'C:\tracker-arquitetura'; $s.Description = 'ArchiTracker - Painel de Controle'; $s.Save(); $bytes = [System.IO.File]::ReadAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk'); $bytes[21] = $bytes[21] -bor 0x20; [System.IO.File]::WriteAllBytes([System.Environment]::GetFolderPath('Desktop') + '\ArchiTracker.lnk', $bytes)"
+echo       OK
+
+echo [6/6] Iniciando tracker agora...
 timeout /t 2 /nobreak >nul
 schtasks /run /tn "ArchiTracker" >nul 2>&1
 echo       OK

@@ -16,31 +16,49 @@ if %errorlevel% neq 0 (
 ) else (
     rmdir "%SystemRoot%\System32\ArchiAdmin" >nul 2>&1
 )
-echo [1/4] Encerrando tracker atual...
+
+echo [1/5] Encerrando tracker atual...
 schtasks /end /tn "ArchiTracker" >nul 2>&1
 schtasks /end /tn "ArchiTrackerWatchdog" >nul 2>&1
 timeout /t 3 /nobreak >nul
-taskkill /f /im python.exe >nul 2>&1
+powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter 'name=''python.exe''' | Where-Object { $_.CommandLine -like '*tracker-arquitetura*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
 taskkill /f /im wscript.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
 echo       OK
-echo [2/4] Atualizando iniciar_invisivel.vbs...
-set VBS=C:\tracker-arquitetura\iniciar_invisivel.vbs
+
+echo [2/5] Atualizando iniciar_invisivel.vbs...
 (
 echo CreateObject^("WScript.Shell"^).Run "C:\tracker-arquitetura\venv\Scripts\python.exe C:\tracker-arquitetura\api.py", 0, False
-) > "%VBS%"
+) > "C:\tracker-arquitetura\iniciar_invisivel.vbs"
 echo       OK
-echo [3/4] Reconfigurando tarefas no Agendador...
+
+echo [3/5] Criando watchdog.ps1...
+(
+echo $procs = Get-WmiObject Win32_Process -Filter "name='python.exe'" ^| Where-Object { $_.CommandLine -like '*tracker-arquitetura*' }
+echo $count = ^($procs ^| Measure-Object^).Count
+echo if ^($count -eq 0^) {
+echo     Start-Process wscript.exe -ArgumentList "C:\tracker-arquitetura\iniciar_invisivel.vbs" -WindowStyle Hidden
+echo } elseif ^($count -gt 1^) {
+echo     $procs ^| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+echo     Start-Sleep 3
+echo     Start-Process wscript.exe -ArgumentList "C:\tracker-arquitetura\iniciar_invisivel.vbs" -WindowStyle Hidden
+echo }
+) > "C:\tracker-arquitetura\watchdog.ps1"
+echo       OK
+
+echo [4/5] Reconfigurando tarefas no Agendador...
 schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
 schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
 timeout /t 1 /nobreak >nul
-schtasks /create /tn "ArchiTracker" /tr "wscript.exe C:\tracker-arquitetura\iniciar_invisivel.vbs" /sc onlogon /rl highest /f >nul 2>&1
-schtasks /create /tn "ArchiTrackerWatchdog" /tr "wscript.exe C:\tracker-arquitetura\iniciar_invisivel.vbs" /sc minute /mo 30 /rl highest /f >nul 2>&1
+schtasks /create /tn "ArchiTracker" /tr "wscript.exe \"C:\tracker-arquitetura\iniciar_invisivel.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
+schtasks /create /tn "ArchiTrackerWatchdog" /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\tracker-arquitetura\watchdog.ps1\"" /sc minute /mo 30 /rl highest /f >nul 2>&1
 echo       OK
-echo [4/4] Iniciando tracker agora...
+
+echo [5/5] Iniciando tracker agora...
 timeout /t 2 /nobreak >nul
 schtasks /run /tn "ArchiTracker" >nul 2>&1
 echo       OK
+
 echo.
 echo ================================================
 echo   PRONTO! Correcoes aplicadas.

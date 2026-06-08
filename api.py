@@ -2,64 +2,37 @@ import time
 import ctypes
 import os
 import sys
+import json
+import urllib.request
 from datetime import datetime, timezone
-from supabase import create_client
 from dotenv import load_dotenv
 
 load_dotenv()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-USER_ID = os.getenv("USER_ID")
-ORG_ID = os.getenv("ORG_ID")
 
+SUPABASE_URL  = os.getenv("SUPABASE_URL")
+USER_TOKEN    = os.getenv("USER_TOKEN")
+USER_ID       = os.getenv("USER_ID")
+ORG_ID        = os.getenv("ORG_ID")
+
+EDGE_FUNCTION_URL = f"{SUPABASE_URL}/functions/v1/insert-tracking"
+
+# -------------------------------------------------------------------
 # Instancia unica via Named Mutex do Windows.
-# O kernel libera automaticamente quando o processo morre — sem lock residual.
+# O kernel libera automaticamente quando o processo morre.
+# -------------------------------------------------------------------
 _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\ArchiTrackerMutex")
 if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
     print("Tracker ja esta rodando. Encerrando esta instancia.")
     sys.exit(0)
 
-IDLE_LIMIT = 600
-KEEPALIVE_INTERVAL = 300
-CONFIG_REFRESH_INTERVAL = 300
+IDLE_LIMIT          = 600   # segundos sem input para considerar inativo
+KEEPALIVE_INTERVAL  = 300   # segundos para gravar keepalive na mesma janela
 
 BROWSER_KEYS = {'chrome', 'firefox', 'edge', 'opera', 'brave', 'arc', 'vivaldi'}
 
-def load_monitored_apps():
-    try:
-        res = supabase.table("monitored_apps") \
-            .select("process_key, app_name, category") \
-            .eq("org_id", ORG_ID) \
-            .eq("active", True) \
-            .execute()
-        patterns = {}
-        for row in res.data:
-            patterns[row['process_key'].lower()] = (row['app_name'], row['category'])
-        print(f"Apps carregados: {len(patterns)}")
-        return patterns
-    except Exception as e:
-        print(f"Erro ao carregar apps: {e}")
-        return {}
-
-def load_monitored_sites():
-    try:
-        res = supabase.table("monitored_sites") \
-            .select("keyword, display_name, category") \
-            .eq("org_id", ORG_ID) \
-            .execute()
-        sites = []
-        for row in res.data:
-            sites.append((row['keyword'].lower(), row['display_name'], row['category']))
-        print(f"Sites carregados: {len(sites)}")
-        return sites
-    except Exception as e:
-        print(f"Erro ao carregar sites: {e}")
-        return []
-
-def match_site(title_lower, monitored_sites):
-    for keyword, display_name, category in monitored_sites:
-        if keyword in title_lower:
-            return display_name, category
-    return None, None
+# -------------------------------------------------------------------
+# Funcoes de leitura do Windows
+# -------------------------------------------------------------------
 
 def get_title():
     hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -91,22 +64,62 @@ def get_idle_seconds():
     millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
     return millis / 1000.0
 
+# -------------------------------------------------------------------
+# Comunicacao com o Supabase
+# tracker_control ainda e lido diretamente (nao precisa de Edge Function)
+# porque e uma leitura simples sem regra de negocio
+# -------------------------------------------------------------------
+
 def get_tracking_status():
     try:
-        res = supabase.table("tracker_control").select("tracking").eq("user_id", USER_ID).execute()
-        return res.data[0]["tracking"]
+        url = f"{SUPABASE_URL}/rest/v1/tracker_control?user_id=eq.{USER_ID}&select=tracking"
+        req = urllib.request.Request(url)
+        req.add_header('apikey', os.getenv("SUPABASE_ANON_KEY"))
+        req.add_header('Authorization', f'Bearer {os.getenv("SUPABASE_ANON_KEY")}')
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return data[0]['tracking'] if data else False
     except:
         return False
 
+def send_to_edge_function(process, title, event_type):
+    """
+    Envia dados brutos para a Edge Function.
+    A classificacao (qual app, qual categoria) acontece la — nao aqui.
+    """
+    payload = json.dumps({
+        'process':    process,
+        'title':      title,
+        'user_token': USER_TOKEN,
+        'user_id':    USER_ID,
+        'org_id':     ORG_ID,
+        'event_type': event_type,
+    }).encode('utf-8')
+
+    try:
+        req = urllib.request.Request(
+            EDGE_FUNCTION_URL,
+            data=payload,
+            method='POST'
+        )
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            print(f"Edge Function: {result.get('action', '?')} — {result.get('app', '')}")
+    except Exception as e:
+        print(f"Erro ao enviar para Edge Function: {e}")
+
+# -------------------------------------------------------------------
+# Loop principal
+# -------------------------------------------------------------------
+
 def tracker_loop():
     SENTINEL_FILE = r"C:\tracker-arquitetura\tracker.running"
-    last_title = None
-    last_recorded_at = 0
-    idle_registered = False
-    last_config_load = 0
 
-    app_patterns = load_monitored_apps()
-    monitored_sites = load_monitored_sites()
+    last_title        = None
+    last_recorded_at  = 0
+    idle_registered   = False
+    last_was_browser  = False   # controle para suprimir trocas de aba em sites nao monitorados
 
     print(f"Tracker iniciado para: {USER_ID}")
 
@@ -117,76 +130,68 @@ def tracker_loop():
         while True:
             try:
                 now = time.time()
-
-                if now - last_config_load >= CONFIG_REFRESH_INTERVAL:
-                    app_patterns = load_monitored_apps()
-                    monitored_sites = load_monitored_sites()
-                    last_config_load = now
-
                 tracking = get_tracking_status()
+
                 if tracking:
                     idle = get_idle_seconds()
+
+                    # --- Inatividade ---
                     if idle >= IDLE_LIMIT:
                         if last_title is not None and not idle_registered:
-                            try:
-                                supabase.table("time_tracking").insert({
-                                    "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                    "app": "Inativo",
-                                    "category": "Inativo",
-                                    "filename": "",
-                                    "raw_title": "",
-                                    "user_id": USER_ID,
-                                    "org_id": ORG_ID,
-                                }).execute()
-                                print("Inatividade registrada")
-                            except Exception as e:
-                                print(f"Erro ao registrar inatividade: {e}")
+                            send_to_edge_function("", "", "idle")
                             idle_registered = True
-                        last_title = None
+                        last_title       = None
                         last_recorded_at = 0
+                        last_was_browser = False
+
+                    # --- Ativo ---
                     else:
                         idle_registered = False
-                        title = get_title()
-                        new_window = title and title != last_title
-                        keepalive = (
-                            title
-                            and title == last_title
+                        title   = get_title()
+                        process = get_process()
+
+                        if not title:
+                            time.sleep(30)
+                            continue
+
+                        # Detecta se o processo atual e um navegador
+                        current_is_browser = any(bk in process for bk in BROWSER_KEYS)
+
+                        new_window = title != last_title
+                        keepalive  = (
+                            title == last_title
                             and (now - last_recorded_at) >= KEEPALIVE_INTERVAL
                         )
-                        if new_window or keepalive:
-                            process = get_process()
-                            title_lower = title.lower()
 
-                            for key, (app_name, category) in app_patterns.items():
-                                if key in process or key in title_lower:
-                                    if key in BROWSER_KEYS:
-                                        site_name, site_category = match_site(title_lower, monitored_sites)
-                                        if site_name:
-                                            app_name = site_name
-                                            category = site_category
-                                    try:
-                                        supabase.table("time_tracking").insert({
-                                            "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                            "app": app_name,
-                                            "category": category,
-                                            "filename": title[:80],
-                                            "raw_title": title,
-                                            "user_id": USER_ID,
-                                            "org_id": ORG_ID,
-                                        }).execute()
-                                        print(f"OK: {app_name} - {title[:50]}")
-                                    except Exception as e:
-                                        print(f"Erro: {e}")
-                                    break
-                            last_title = title
+                        if new_window or keepalive:
+
+                            # Supressao de registros redundantes de navegador:
+                            # Se estava em navegador E continua em navegador (troca de aba),
+                            # nao envia — a menos que seja keepalive.
+                            # A Edge Function vai classificar se e site monitorado ou "Chrome" generico.
+                            if new_window and current_is_browser and last_was_browser:
+                                # Troca de aba entre sites — nao envia, apenas atualiza o titulo
+                                last_title = title
+                                # nao atualiza last_recorded_at para nao atrasar o proximo keepalive
+                                time.sleep(30)
+                                continue
+
+                            send_to_edge_function(process, title, event_type='keepalive' if keepalive else 'window_change')
+                            last_title       = title
                             last_recorded_at = now
+                            last_was_browser = current_is_browser
+
                 else:
-                    last_title = None
+                    last_title       = None
                     last_recorded_at = 0
-                    idle_registered = False
+                    idle_registered  = False
+                    last_was_browser = False
+
             except Exception as e:
                 print(f"Erro geral: {e}")
+
             time.sleep(30)
+
     finally:
         if os.path.exists(SENTINEL_FILE):
             os.remove(SENTINEL_FILE)

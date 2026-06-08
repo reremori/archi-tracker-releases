@@ -3,20 +3,18 @@ import ctypes
 import os
 import sys
 import json
-import threading
 import urllib.request
-from dotenv import load_dotenv
 from supabase import create_client
+from dotenv import load_dotenv
 
 load_dotenv()
 
-SUPABASE_URL  = os.getenv("SUPABASE_URL")
-SUPABASE_ANON = os.getenv("SUPABASE_ANON_KEY")
-USER_TOKEN    = os.getenv("USER_TOKEN")
-USER_ID       = os.getenv("USER_ID")
-ORG_ID        = os.getenv("ORG_ID")
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+USER_ID  = os.getenv("USER_ID")
+ORG_ID   = os.getenv("ORG_ID")
+USER_TOKEN = os.getenv("USER_TOKEN")
 
-EDGE_FUNCTION_URL = f"{SUPABASE_URL}/functions/v1/dynamic-handler"
+EDGE_FUNCTION_URL = f"{os.getenv('SUPABASE_URL')}/functions/v1/dynamic-handler"
 
 # -------------------------------------------------------------------
 # Instancia unica via Named Mutex do Windows.
@@ -29,36 +27,10 @@ if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
 
 IDLE_LIMIT         = 600   # segundos sem input para considerar inativo
 KEEPALIVE_INTERVAL = 300   # segundos para gravar keepalive na mesma janela
-FALLBACK_INTERVAL  = 300   # segundos entre polls de fallback se realtime cair
 
 # Usado apenas para suprimir registros redundantes de troca de aba
+# Nao e regra de negocio — e otimizacao de trafego
 BROWSER_KEYS = {'chrome', 'firefox', 'edge', 'opera', 'brave', 'arc', 'vivaldi'}
-
-# -------------------------------------------------------------------
-# Estado compartilhado entre threads
-# -------------------------------------------------------------------
-_tracking_lock = threading.Lock()
-_tracking      = False          # status atual de play/pause
-_realtime_ok   = False          # indica se a conexao realtime esta ativa
-_last_poll     = 0.0            # timestamp do ultimo poll de fallback
-
-def get_tracking():
-    with _tracking_lock:
-        return _tracking
-
-def set_tracking(value):
-    with _tracking_lock:
-        global _tracking
-        _tracking = value
-
-def get_realtime_ok():
-    with _tracking_lock:
-        return _realtime_ok
-
-def set_realtime_ok(value):
-    with _tracking_lock:
-        global _realtime_ok
-        _realtime_ok = value
 
 # -------------------------------------------------------------------
 # Funcoes de leitura do Windows
@@ -95,74 +67,21 @@ def get_idle_seconds():
     return millis / 1000.0
 
 # -------------------------------------------------------------------
-# Fallback poll — usado quando o Realtime esta fora
-# Le o tracker_control diretamente via REST com a anon key
+# Le status de tracking via service_role key (bypassa RLS)
+# Igual ao V1 — service_role key permanece no .env para esta funcao
+# Sera removida na reescrita em Electron com Realtime nativo
 # -------------------------------------------------------------------
 
-def poll_tracking_status():
+def get_tracking_status():
     try:
-        url = f"{SUPABASE_URL}/rest/v1/tracker_control?user_id=eq.{USER_ID}&select=tracking"
-        req = urllib.request.Request(url)
-        req.add_header('apikey', SUPABASE_ANON)
-        req.add_header('Authorization', f'Bearer {SUPABASE_ANON}')
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-            if data:
-                set_tracking(data[0]['tracking'])
-                print(f"[fallback poll] tracking = {data[0]['tracking']}")
-    except Exception as e:
-        print(f"[fallback poll] erro: {e}")
+        res = supabase.table('tracker_control').select('tracking').eq('user_id', USER_ID).execute()
+        return res.data[0]['tracking'] if res.data else False
+    except:
+        return False
 
 # -------------------------------------------------------------------
-# Thread do Realtime — escuta mudancas no tracker_control
-# Se a conexao cair, marca realtime_ok = False e o loop principal
-# faz fallback para poll a cada FALLBACK_INTERVAL segundos
-# -------------------------------------------------------------------
-
-def realtime_thread():
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_ANON)
-
-        def on_change(payload):
-            new_tracking = payload.get('new', {}).get('tracking')
-            if new_tracking is not None:
-                set_tracking(new_tracking)
-                print(f"[realtime] tracking = {new_tracking}")
-
-        def on_subscribe(status, err=None):
-            if status == 'SUBSCRIBED':
-                set_realtime_ok(True)
-                print("[realtime] conectado")
-            else:
-                set_realtime_ok(False)
-                print(f"[realtime] status: {status}")
-
-        channel = (
-            supabase.channel('tracker-control')
-            .on(
-                'postgres_changes',
-                event='UPDATE',
-                schema='public',
-                table='tracker_control',
-                filter=f'user_id=eq.{USER_ID}',
-                callback=on_change
-            )
-            .subscribe(on_subscribe)
-        )
-
-        # Carrega estado inicial antes de comecar a escutar
-        poll_tracking_status()
-
-        # Mantem a thread viva
-        while True:
-            time.sleep(60)
-
-    except Exception as e:
-        print(f"[realtime] erro fatal: {e}")
-        set_realtime_ok(False)
-
-# -------------------------------------------------------------------
-# Envio para a Edge Function
+# Envia dados para a Edge Function
+# Toda classificacao acontece no servidor — nao ha logica de negocio aqui
 # -------------------------------------------------------------------
 
 def call_edge_function(process, title, event_type):
@@ -188,7 +107,6 @@ def call_edge_function(process, title, event_type):
 # -------------------------------------------------------------------
 
 def tracker_loop():
-    global _last_poll
     SENTINEL_FILE = r"C:\tracker-arquitetura\tracker.running"
 
     last_title       = None
@@ -198,24 +116,14 @@ def tracker_loop():
 
     print(f"Tracker iniciado para: {USER_ID}")
 
-    # Inicia thread do Realtime em background
-    t = threading.Thread(target=realtime_thread, daemon=True)
-    t.start()
-
     with open(SENTINEL_FILE, "w") as f:
         f.write(str(os.getpid()))
 
     try:
         while True:
             try:
-                now = time.time()
-
-                # Fallback: se realtime caiu, faz poll a cada FALLBACK_INTERVAL
-                if not get_realtime_ok() and (now - _last_poll) >= FALLBACK_INTERVAL:
-                    poll_tracking_status()
-                    _last_poll = now
-
-                tracking = get_tracking()
+                now      = time.time()
+                tracking = get_tracking_status()
 
                 if tracking:
                     idle = get_idle_seconds()

@@ -34,6 +34,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.W
 powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/painel_architracker.bat','C:\tracker-arquitetura\painel_architracker.bat')"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/corrigir_architracker.bat','C:\tracker-arquitetura\corrigir_architracker.bat')"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/version.txt','C:\tracker-arquitetura\version.txt')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "(New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/reremori/archi-tracker-releases/main/executar_watchdog.vbs','C:\tracker-arquitetura\executar_watchdog.vbs')"
 echo       OK
 
 echo [3/6] Reconfigurando tarefas no Agendador...

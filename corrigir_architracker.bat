@@ -41,7 +41,7 @@ schtasks /delete /tn "ArchiTracker" /f >nul 2>&1
 schtasks /delete /tn "ArchiTrackerWatchdog" /f >nul 2>&1
 timeout /t 1 /nobreak >nul
 schtasks /create /tn "ArchiTracker" /tr "wscript.exe \"C:\tracker-arquitetura\iniciar_invisivel.vbs\"" /sc onlogon /rl highest /f >nul 2>&1
-schtasks /create /tn "ArchiTrackerWatchdog" /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\tracker-arquitetura\watchdog.ps1\"" /sc minute /mo 30 /rl highest /f >nul 2>&1
+schtasks /create /tn "ArchiTrackerWatchdog" /tr "wscript.exe \"C:\tracker-arquitetura\executar_watchdog.vbs\"" /sc minute /mo 30 /rl highest /f >nul 2>&1
 echo       OK
 
 echo [4/6] Recriando atalho na area de trabalho...

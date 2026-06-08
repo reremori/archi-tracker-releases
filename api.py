@@ -3,18 +3,20 @@ import ctypes
 import os
 import sys
 import json
+import threading
 import urllib.request
-from datetime import datetime, timezone
 from dotenv import load_dotenv
+from supabase import create_client
 
 load_dotenv()
 
 SUPABASE_URL  = os.getenv("SUPABASE_URL")
+SUPABASE_ANON = os.getenv("SUPABASE_ANON_KEY")
 USER_TOKEN    = os.getenv("USER_TOKEN")
 USER_ID       = os.getenv("USER_ID")
 ORG_ID        = os.getenv("ORG_ID")
 
-EDGE_FUNCTION_URL = f"{SUPABASE_URL}/functions/v1/insert-tracking"
+EDGE_FUNCTION_URL = f"{SUPABASE_URL}/functions/v1/dynamic-handler"
 
 # -------------------------------------------------------------------
 # Instancia unica via Named Mutex do Windows.
@@ -25,10 +27,38 @@ if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
     print("Tracker ja esta rodando. Encerrando esta instancia.")
     sys.exit(0)
 
-IDLE_LIMIT          = 600   # segundos sem input para considerar inativo
-KEEPALIVE_INTERVAL  = 300   # segundos para gravar keepalive na mesma janela
+IDLE_LIMIT         = 600   # segundos sem input para considerar inativo
+KEEPALIVE_INTERVAL = 300   # segundos para gravar keepalive na mesma janela
+FALLBACK_INTERVAL  = 300   # segundos entre polls de fallback se realtime cair
 
+# Usado apenas para suprimir registros redundantes de troca de aba
 BROWSER_KEYS = {'chrome', 'firefox', 'edge', 'opera', 'brave', 'arc', 'vivaldi'}
+
+# -------------------------------------------------------------------
+# Estado compartilhado entre threads
+# -------------------------------------------------------------------
+_tracking_lock = threading.Lock()
+_tracking      = False          # status atual de play/pause
+_realtime_ok   = False          # indica se a conexao realtime esta ativa
+_last_poll     = 0.0            # timestamp do ultimo poll de fallback
+
+def get_tracking():
+    with _tracking_lock:
+        return _tracking
+
+def set_tracking(value):
+    with _tracking_lock:
+        global _tracking
+        _tracking = value
+
+def get_realtime_ok():
+    with _tracking_lock:
+        return _realtime_ok
+
+def set_realtime_ok(value):
+    with _tracking_lock:
+        global _realtime_ok
+        _realtime_ok = value
 
 # -------------------------------------------------------------------
 # Funcoes de leitura do Windows
@@ -65,28 +95,77 @@ def get_idle_seconds():
     return millis / 1000.0
 
 # -------------------------------------------------------------------
-# Comunicacao com o Supabase
-# tracker_control ainda e lido diretamente (nao precisa de Edge Function)
-# porque e uma leitura simples sem regra de negocio
+# Fallback poll — usado quando o Realtime esta fora
+# Le o tracker_control diretamente via REST com a anon key
 # -------------------------------------------------------------------
 
-def get_tracking_status():
+def poll_tracking_status():
     try:
         url = f"{SUPABASE_URL}/rest/v1/tracker_control?user_id=eq.{USER_ID}&select=tracking"
         req = urllib.request.Request(url)
-        req.add_header('apikey', os.getenv("SUPABASE_ANON_KEY"))
-        req.add_header('Authorization', f'Bearer {os.getenv("SUPABASE_ANON_KEY")}')
+        req.add_header('apikey', SUPABASE_ANON)
+        req.add_header('Authorization', f'Bearer {SUPABASE_ANON}')
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
-            return data[0]['tracking'] if data else False
-    except:
-        return False
+            if data:
+                set_tracking(data[0]['tracking'])
+                print(f"[fallback poll] tracking = {data[0]['tracking']}")
+    except Exception as e:
+        print(f"[fallback poll] erro: {e}")
 
-def send_to_edge_function(process, title, event_type):
-    """
-    Envia dados brutos para a Edge Function.
-    A classificacao (qual app, qual categoria) acontece la — nao aqui.
-    """
+# -------------------------------------------------------------------
+# Thread do Realtime — escuta mudancas no tracker_control
+# Se a conexao cair, marca realtime_ok = False e o loop principal
+# faz fallback para poll a cada FALLBACK_INTERVAL segundos
+# -------------------------------------------------------------------
+
+def realtime_thread():
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_ANON)
+
+        def on_change(payload):
+            new_tracking = payload.get('new', {}).get('tracking')
+            if new_tracking is not None:
+                set_tracking(new_tracking)
+                print(f"[realtime] tracking = {new_tracking}")
+
+        def on_subscribe(status, err=None):
+            if status == 'SUBSCRIBED':
+                set_realtime_ok(True)
+                print("[realtime] conectado")
+            else:
+                set_realtime_ok(False)
+                print(f"[realtime] status: {status}")
+
+        channel = (
+            supabase.channel('tracker-control')
+            .on(
+                'postgres_changes',
+                event='UPDATE',
+                schema='public',
+                table='tracker_control',
+                filter=f'user_id=eq.{USER_ID}',
+                callback=on_change
+            )
+            .subscribe(on_subscribe)
+        )
+
+        # Carrega estado inicial antes de comecar a escutar
+        poll_tracking_status()
+
+        # Mantem a thread viva
+        while True:
+            time.sleep(60)
+
+    except Exception as e:
+        print(f"[realtime] erro fatal: {e}")
+        set_realtime_ok(False)
+
+# -------------------------------------------------------------------
+# Envio para a Edge Function
+# -------------------------------------------------------------------
+
+def call_edge_function(process, title, event_type):
     payload = json.dumps({
         'process':    process,
         'title':      title,
@@ -95,33 +174,33 @@ def send_to_edge_function(process, title, event_type):
         'org_id':     ORG_ID,
         'event_type': event_type,
     }).encode('utf-8')
-
     try:
-        req = urllib.request.Request(
-            EDGE_FUNCTION_URL,
-            data=payload,
-            method='POST'
-        )
+        req = urllib.request.Request(EDGE_FUNCTION_URL, data=payload, method='POST')
         req.add_header('Content-Type', 'application/json')
         with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read())
-            print(f"Edge Function: {result.get('action', '?')} — {result.get('app', '')}")
+            print(f"[{event_type}] {result.get('action', '?')} — {result.get('app', '')}")
     except Exception as e:
-        print(f"Erro ao enviar para Edge Function: {e}")
+        print(f"Erro ao chamar Edge Function: {e}")
 
 # -------------------------------------------------------------------
 # Loop principal
 # -------------------------------------------------------------------
 
 def tracker_loop():
+    global _last_poll
     SENTINEL_FILE = r"C:\tracker-arquitetura\tracker.running"
 
-    last_title        = None
-    last_recorded_at  = 0
-    idle_registered   = False
-    last_was_browser  = False   # controle para suprimir trocas de aba em sites nao monitorados
+    last_title       = None
+    last_recorded_at = 0
+    idle_registered  = False
+    last_was_browser = False
 
     print(f"Tracker iniciado para: {USER_ID}")
+
+    # Inicia thread do Realtime em background
+    t = threading.Thread(target=realtime_thread, daemon=True)
+    t.start()
 
     with open(SENTINEL_FILE, "w") as f:
         f.write(str(os.getpid()))
@@ -130,21 +209,25 @@ def tracker_loop():
         while True:
             try:
                 now = time.time()
-                tracking = get_tracking_status()
+
+                # Fallback: se realtime caiu, faz poll a cada FALLBACK_INTERVAL
+                if not get_realtime_ok() and (now - _last_poll) >= FALLBACK_INTERVAL:
+                    poll_tracking_status()
+                    _last_poll = now
+
+                tracking = get_tracking()
 
                 if tracking:
                     idle = get_idle_seconds()
 
-                    # --- Inatividade ---
                     if idle >= IDLE_LIMIT:
                         if last_title is not None and not idle_registered:
-                            send_to_edge_function("", "", "idle")
+                            call_edge_function("", "", "idle")
                             idle_registered = True
                         last_title       = None
                         last_recorded_at = 0
                         last_was_browser = False
 
-                    # --- Ativo ---
                     else:
                         idle_registered = False
                         title   = get_title()
@@ -154,9 +237,7 @@ def tracker_loop():
                             time.sleep(30)
                             continue
 
-                        # Detecta se o processo atual e um navegador
                         current_is_browser = any(bk in process for bk in BROWSER_KEYS)
-
                         new_window = title != last_title
                         keepalive  = (
                             title == last_title
@@ -164,19 +245,14 @@ def tracker_loop():
                         )
 
                         if new_window or keepalive:
-
-                            # Supressao de registros redundantes de navegador:
-                            # Se estava em navegador E continua em navegador (troca de aba),
-                            # nao envia — a menos que seja keepalive.
-                            # A Edge Function vai classificar se e site monitorado ou "Chrome" generico.
+                            # Suprime troca de aba entre sites nao monitorados
                             if new_window and current_is_browser and last_was_browser:
-                                # Troca de aba entre sites — nao envia, apenas atualiza o titulo
                                 last_title = title
-                                # nao atualiza last_recorded_at para nao atrasar o proximo keepalive
                                 time.sleep(30)
                                 continue
 
-                            send_to_edge_function(process, title, event_type='keepalive' if keepalive else 'window_change')
+                            event = 'keepalive' if keepalive else 'window_change'
+                            call_edge_function(process, title, event)
                             last_title       = title
                             last_recorded_at = now
                             last_was_browser = current_is_browser

@@ -158,7 +158,7 @@ def tracker_loop():
                             title_lower = title.lower()
 
                             for key, (app_name, category) in app_patterns.items():
-                                if key in process or key in title_lower:
+                                if key in process or (key not in BROWSER_KEYS and key in title_lower):
                                     if key in BROWSER_KEYS:
                                         site_name, site_category = match_site(title_lower, monitored_sites)
                                         if site_name:

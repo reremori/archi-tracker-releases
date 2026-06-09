@@ -9,10 +9,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-USER_ID  = os.getenv("USER_ID")
-ORG_ID   = os.getenv("ORG_ID")
+supabase   = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+USER_ID    = os.getenv("USER_ID")
+ORG_ID     = os.getenv("ORG_ID")
 USER_TOKEN = os.getenv("USER_TOKEN")
+ANON_KEY   = os.getenv("SUPABASE_ANON_KEY")
 
 EDGE_FUNCTION_URL = f"{os.getenv('SUPABASE_URL')}/functions/v1/dynamic-handler"
 
@@ -82,6 +83,7 @@ def get_tracking_status():
 # -------------------------------------------------------------------
 # Envia dados para a Edge Function
 # Toda classificacao acontece no servidor — nao ha logica de negocio aqui
+# Authorization header com anon key e obrigatorio pelo Supabase
 # -------------------------------------------------------------------
 
 def call_edge_function(process, title, event_type):
@@ -96,6 +98,7 @@ def call_edge_function(process, title, event_type):
     try:
         req = urllib.request.Request(EDGE_FUNCTION_URL, data=payload, method='POST')
         req.add_header('Content-Type', 'application/json')
+        req.add_header('Authorization', f'Bearer {ANON_KEY}')
         with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read())
             print(f"[{event_type}] {result.get('action', '?')} — {result.get('app', '')}")

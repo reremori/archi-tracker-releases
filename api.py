@@ -29,10 +29,6 @@ if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
 IDLE_LIMIT         = 600   # segundos sem input para considerar inativo
 KEEPALIVE_INTERVAL = 300   # segundos para gravar keepalive na mesma janela
 
-# Usado apenas para suprimir registros redundantes de troca de aba
-# Nao e regra de negocio — e otimizacao de trafego
-BROWSER_KEYS = {'chrome', 'firefox', 'edge', 'opera', 'brave', 'arc', 'vivaldi'}
-
 # -------------------------------------------------------------------
 # Funcoes de leitura do Windows
 # -------------------------------------------------------------------
@@ -69,8 +65,7 @@ def get_idle_seconds():
 
 # -------------------------------------------------------------------
 # Le status de tracking via service_role key (bypassa RLS)
-# Igual ao V1 — service_role key permanece no .env para esta funcao
-# Sera removida na reescrita em Electron com Realtime nativo
+# Sera removido na reescrita em Electron com Realtime nativo
 # -------------------------------------------------------------------
 
 def get_tracking_status():
@@ -81,9 +76,8 @@ def get_tracking_status():
         return False
 
 # -------------------------------------------------------------------
-# Envia dados para a Edge Function
-# Toda classificacao acontece no servidor — nao ha logica de negocio aqui
-# Authorization header com anon key e obrigatorio pelo Supabase
+# Envia dados brutos para a Edge Function
+# Toda classificacao e decisao de gravar acontece no servidor
 # -------------------------------------------------------------------
 
 def call_edge_function(process, title, event_type):
@@ -115,7 +109,6 @@ def tracker_loop():
     last_title       = None
     last_recorded_at = 0
     idle_registered  = False
-    last_was_browser = False
 
     print(f"Tracker iniciado para: {USER_ID}")
 
@@ -137,7 +130,6 @@ def tracker_loop():
                             idle_registered = True
                         last_title       = None
                         last_recorded_at = 0
-                        last_was_browser = False
 
                     else:
                         idle_registered = False
@@ -148,7 +140,6 @@ def tracker_loop():
                             time.sleep(30)
                             continue
 
-                        current_is_browser = any(bk in process for bk in BROWSER_KEYS)
                         new_window = title != last_title
                         keepalive  = (
                             title == last_title
@@ -156,23 +147,15 @@ def tracker_loop():
                         )
 
                         if new_window or keepalive:
-                            # Suprime troca de aba entre sites nao monitorados
-                            if new_window and current_is_browser and last_was_browser:
-                                last_title = title
-                                time.sleep(30)
-                                continue
-
                             event = 'keepalive' if keepalive else 'window_change'
                             call_edge_function(process, title, event)
                             last_title       = title
                             last_recorded_at = now
-                            last_was_browser = current_is_browser
 
                 else:
                     last_title       = None
                     last_recorded_at = 0
                     idle_registered  = False
-                    last_was_browser = False
 
             except Exception as e:
                 print(f"Erro geral: {e}")
